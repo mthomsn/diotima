@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# Fake `claude -p`: scripted stream-json that calls dio's MCP tools for real.
+# Plays the prober or the teacher (by the tool set), with quiz or explain.
+set -euo pipefail
+cfg="" allowed=""
+while [ $# -gt 0 ]; do
+  case "$1" in --mcp-config) cfg="$2" ;; --allowedTools) allowed="$2" ;; esac
+  shift
+done
+agent=prober; [[ "$allowed" == *plan_init* ]] && agent=teacher
+[[ "$allowed" == *submit_findings* ]] && agent=extractor
+[[ "$allowed" == *submit_review* ]] && agent=auditor
+[[ "$allowed" == *__problem* ]] && agent=practice
+[[ "$allowed" == *WebSearch* ]] && agent=researcher
+[[ "$allowed" == *write_demo* ]] && agent=demo
+[[ "$allowed" == *write_svg* ]] && agent=visual
+[[ "$allowed" == *pdf_info* ]] && agent=pdfreader
+final=ok
+mech=quiz; [[ "$allowed" == *__explain* ]] && mech=explain
+input=$(cat); printf '%s' "$input" >"${FAKE_OUT:-/dev/null}.stdin.$agent"  # transcript on stdin
+url=$(printf '%s' "$cfg" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+tok=$(printf '%s' "$cfg" | sed -n 's/.*Bearer \([0-9a-f]*\).*/\1/p')
+# tool_use ids are unique per process, as real ones are; result files keep the short name
+call() { # id name args-json
+  curl -s -X POST "$url" -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"$2\",\"arguments\":$3,\"_meta\":{\"claudecode/toolUseId\":\"$1.$$\"}}}" >"${FAKE_OUT:-/dev/null}.$1"
+}
+use() { # id name args-json -> announce on the stream, execute, report the result as claude would
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"%s","name":"mcp__diotima__%s","input":%s}]}}\n' "$1.$$" "$2" "$3"
+  call "$1" "$2" "$3"
+  local err=false txt="(result)"; grep -q '"isError":true' "${FAKE_OUT:-/dev/null}.$1" 2>/dev/null && err=true
+  # echo the server's text back, as the real CLI does (still JSON-escaped)
+  [ -n "${FAKE_OUT:-}" ] && txt=$(sed -nE 's/.*"type":"text","text":"(([^"\\]|\\.)*)".*/\1/p' "$FAKE_OUT.$1" | head -1)
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":[{"type":"text","text":"%s"}]}]}}\n' "$1.$$" "$err" "${txt:-(result)}"
+}
+say() { printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
+
+if [ $agent = researcher ]; then
+  grep -q slow <<<"$input" && sleep 30
+  final="## Summary\\nBinary search needs a sorted array. [Source](https://example.org)"
+elif [ $agent = demo ]; then
+  use dm1 run_demo '{}'
+  use dm2 write_demo '{"html":"<!doctype html><html><body><input type=range id=s><script>window.ready=true</script></body></html>"}'
+  use dm3 run_demo '{"probe":"window.ready === true"}'
+  final="A slider; drag it."
+elif [ $agent = visual ]; then
+  use vs1 render_svg '{}'
+  use vs2 write_svg '{"svg":"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"60\" viewBox=\"0 0 200 60\"><rect width=\"200\" height=\"60\" fill=\"white\"/><line x1=\"10\" y1=\"30\" x2=\"190\" y2=\"30\" stroke=\"black\"/><image href=\"learner-image\" x=\"0\" y=\"0\" width=\"40\" height=\"30\"/></svg>"}'
+  use vs3 edit_svg '{"old_text":"no such text","new_text":"x"}'
+  use vs4 edit_svg '{"old_text":"stroke=\"black\"","new_text":"stroke=\"blue\""}'
+  use vs5 render_svg '{}'
+  final="A number line with the learner image."
+elif [ $agent = pdfreader ]; then
+  use pd1 pdf_info '{}'
+  use pd2 pdf_extract '{"pages":"1"}'
+  use pd3 pdf_search '{"query":"HALVES"}'
+  use pd4 pdf_render '{"pages":"1","dpi":72}'
+  use pd5 pdf_extract '{"pages":"9"}'
+  final="Binary search halves the range (p. 1).\\nPages consulted: 1"
+elif [ $agent = teacher ] && [ "${FAKE_MODE:-}" = jobs ]; then
+  if ! grep -q '\[job j_' <<<"$input"; then
+    say "Let me get some material built while we talk."
+    use tj1 research '{"context":"no question"}'
+    use tj2 research '{"question":"Does binary search need a sorted array?"}'
+    use tj3 demo '{"title":"Halving","brief":"A slider that halves a range."}'
+    use tj4 visual '{"brief":"A number line, with the dot marked.","image":"dot.png"}'
+    use tj5 pdf '{"path":"halves.pdf","question":"What does binary search do?"}'
+    use tj6 pdf '{"path":"missing.pdf","question":"x"}'
+    use tj7 show_image '{"path":"dot.png","caption":"your dot"}'
+    use tj8 research '{"question":"slow question"}'
+    say "Meanwhile, the idea itself."
+  else
+    say "Teaching from the job results."
+  fi
+elif [ $agent = practice ]; then
+  [[ "$allowed" == *Read,Glob,Grep* ]] && echo ok >"${FAKE_OUT:-/dev/null}.builtins"
+  pwd -P >"${FAKE_OUT:-/dev/null}.cwd"
+  nexts=$( { grep -o 'NEXT PROBLEM\]' <<<"$input" || true; } | wc -l | tr -d ' ')
+  node=$( { grep -o '\[n_[0-9a-f]*\]' <<<"$input" || true; } | head -1 | tr -d '[]')
+  if [ "$nexts" = 0 ] && ! grep -q 'Your thinking:' <<<"$input"; then
+    use pr1 problem '{"statement":"What is 3+3?","mode":"recall"}'
+    use pr2 problem '{"statement":"What is 3+3?","mode":"recall","target":["'"$node"'"],"modelSolution":"3+3 = 6, two groups of three."}'
+  elif [ "$nexts" = 0 ]; then
+    use co1 conclude '{"outcome":"dismissed","verdict":"x","rung":null,"missClass":null,"retest":false}'
+    use co2 conclude '{"outcome":"solved","verdict":"Right: 6.","rung":null,"missClass":null,"retest":false}'
+    say "Nicely done."
+  elif [ "$nexts" = 1 ]; then
+    use pr3 problem '{"statement":"What is 4+4?","mode":"recall","target":["no-such-node"],"modelSolution":"8"}'
+    use pr4 problem '{"statement":"What is 4+4?","mode":"composition","modelSolution":"4+4 = 8."}'
+  else
+    use co3 conclude '{"outcome":"solved","verdict":"x","rung":null,"missClass":null,"retest":false}'
+    say "That wraps the session."
+  fi
+elif [ $agent = extractor ]; then
+  mid=$(grep -o 'TEACHER \[m[0-9]*\]' <<<"$input" | head -1 | sed 's/.*\[\(m[0-9]*\)\]/\1/')
+  use ex1 submit_findings '{"propositions":[{"id":"p1","name":"Counting on","statement":"Adding n counts on n steps.","messageId":"m9999"}],"chains":[]}'
+  use ex2 submit_findings '{"propositions":[{"id":"p1","name":"Counting on","statement":"Adding n to a number counts on n steps from it.","messageId":"'"$mid"'"},{"id":"p2","name":"Repeated addition","statement":"Multiplying a by b adds a to itself b times.","messageId":"'"$mid"'"}],"chains":[{"premises":["p1"],"conclusion":"p2"}]}'
+elif [ $agent = auditor ]; then
+  cand=$(grep -o '"n_[0-9a-f]*"' <<<"$input" | head -1 | tr -d '"')
+  use au1 find_candidates '{"propositions":[{"id":"p1","hints":["counting"]}]}'
+  use au2 submit_review '{"links":[{"id":"p1","linkTo":"n_000000000000"}]}'
+  use au3 submit_review '{"links":[{"id":"p1","linkTo":"'"$cand"'"}]}'
+elif [ $agent = prober ]; then
+  printf '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Let me check "}}}\n'
+  printf '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"your arithmetic."}}}\n'
+  say "Let me check your arithmetic."
+  use tu0 list_sessions '{}' 
+  if [ $mech = quiz ]; then
+    use tu1 quiz '{"question":"2+2?","options":[{"label":"3"},{"label":"4"}],"explanation":"Because.","correctAnswer":"4"}'
+    # a malformed call must come back as an error, not reach the learner
+    use tu2 quiz '{"question":"bad","options":[{"label":"a"},{"label":"b"}],"explanation":"x","correctAnswer":"zzz"}'
+  else
+    use tu1 explain '{"question":"What is 2+2, and why?","correctAnswer":"4: two and two more counted together."}'
+    use tu2 explain '{"question":"bad"}'
+  fi
+  use tu3 probe_done '{"assessment":{"strands":[{"strand":"arithmetic","assessment":"solid"}]}}'
+  # replaying an id must be refused
+  FAKE_OUT="${FAKE_OUT:-/dev/null}.replay" call tu3 probe_done '{"assessment":{"strands":[{"strand":"arithmetic","assessment":"solid"}]}}' || true
+  say "Done probing."
+else
+  say "Here is the map."
+  use tp1 plan_init '{"mermaid":"graph TD\n  Bad --> add"}'
+  use tp2 plan_init '{"mermaid":"graph TD\n  count[Counting] --> add[Addition] --> mult[Multiplication]\n  count --> mult"}'
+  if [ $mech = quiz ]; then
+    use tq1 quiz '{"type":"predict","nodeId":"nope","question":"q","options":[{"label":"a"},{"label":"b"}],"explanation":"x","correctAnswer":"a"}'
+    use tq2 quiz '{"type":"predict","nodeId":"add","question":"3+1?","options":[{"label":"4"},{"label":"5"}],"explanation":"Count on.","correctAnswer":"4"}'
+    say "Multiplication is repeated addition."
+    use tq3 quiz '{"type":"check","nodeId":"mult","question":"3x2?","options":[{"label":"5"},{"label":"6"}],"explanation":"3+3.","correctAnswer":"6"}'
+  else
+    use tq1 explain '{"type":"guess","nodeId":"add","question":"q","correctAnswer":"a"}'
+    use tq2 explain '{"type":"predict","nodeId":"add","question":"What is 3+1?","correctAnswer":"4, counting on one."}'
+    say "Multiplication is repeated addition."
+    use tq3 explain '{"type":"check","nodeId":"mult","question":"Why is 3x2 six?","correctAnswer":"Two groups of three: 3+3."}'
+  fi
+  say "Over to you."
+fi
+printf '{"type":"result","is_error":false,"result":"%s"}\n' "$final"
