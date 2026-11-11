@@ -134,12 +134,19 @@ static void put_text(const char *head, const char *body) {
 	fputc('\n', stdout);
 }
 
+/* Question prompts: "/quit" (or Ctrl-D) ends the session from inside a question too. */
+static int q_ask(const char *label, char *buf, size_t n) {
+	int r = term_ask(label, buf, n);
+	if (!r && !strcmp(buf, "/quit")) { buf[0] = 0; return -1; }
+	return r;
+}
+
 /* Checks arrive collapsed: the learner opens one when done reading, and may
  * say what he thought while reading. Caller holds term_mu. -1 on EOF. */
 static int check_gate(char *reading, size_t n) {
 	char line[256];
-	if (term_ask("\n\033[1m▸ Check your understanding\033[0m — press enter when ready ", line, sizeof line)) return -1;
-	return term_ask("thinking while reading (optional, enter to skip)> ", reading, n);
+	if (q_ask("\n\033[1m▸ Check your understanding\033[0m — press enter when ready ", line, sizeof line)) return -1;
+	return q_ask("thinking while reading (optional, enter to skip)> ", reading, n);
 }
 
 static void show_question(const cJSON *a) {
@@ -165,19 +172,19 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	printf("  0) I don't know\n");
 	int picks[64], np;
 	for (;;) {
-		if (term_ask(multi ? "answer (e.g. 1,3)> " : "answer> ", line, sizeof line)) EOF_OUT();
+		if (q_ask(multi ? "answer (e.g. 1,3)> " : "answer> ", line, sizeof line)) EOF_OUT();
 		np = parse_choice(line, n < 64 ? n : 63, multi, picks);
 		if (np >= 0) break;
 		printf("  pick %s of 1-%d, or 0\n", multi ? "one or more" : "one", n);
 	}
 	int dont = np == 0, conf = -1;
 	if (!dont) {
-		if (term_ask("confidence that you're right, 0-100 [50]> ", line, sizeof line)) EOF_OUT();
+		if (q_ask("confidence that you're right, 0-100 [50]> ", line, sizeof line)) EOF_OUT();
 		conf = line[0] ? atoi(line) : 50;
 		if (conf < 0) conf = 0;
 		if (conf > 100) conf = 100;
 	}
-	if (term_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) thinking[0] = 0;
+	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 
 	cJSON *picked = cJSON_CreateArray();
 	for (int i = 0; i < np; i++) cJSON_AddItemToArray(picked, cJSON_CreateString(optval(cJSON_GetArrayItem(opts, picks[i] - 1))));
@@ -237,8 +244,8 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	pthread_mutex_lock(&term_mu);
 	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
 	show_question(a);
-	if (term_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
-	if (term_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) thinking[0] = 0;
+	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
+	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 	put_text("\033[2m  committed answer:\033[0m\n  ", S_(a, "correctAnswer"));
 	pthread_mutex_unlock(&term_mu);
 	count_open(-1);
@@ -279,10 +286,10 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 	cJSON *r = cJSON_CreateObject();
 	cJSON_AddStringToObject(r, "kind", "ask");
 	for (;;) {
-		if (term_ask(n ? (multi ? "answer (e.g. 1,3 or o)> " : "answer> ") : "answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
+		if (q_ask(n ? (multi ? "answer (e.g. 1,3 or o)> " : "answer> ") : "answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
 		if (!n) { cJSON_AddStringToObject(r, "answer", line); break; }
 		if (!strcmp(line, "o") || !strcmp(line, "O")) {
-			if (term_ask("your answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
+			if (q_ask("your answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
 			cJSON_AddStringToObject(r, "other", line);
 			break;
 		}
@@ -294,7 +301,7 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 		}
 		printf("  pick 1-%d or o\n", n);
 	}
-	if (term_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) thinking[0] = 0;
+	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 	pthread_mutex_unlock(&term_mu);
 	count_open(-1);
 	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);

@@ -98,9 +98,12 @@ photo.jpg"). Paths are relative to the directory you started dio in.
 Extraction also runs in the background during long lessons. A dim `· graph:` line reports
 each batch.
 
-**Come back.** `dio ls` lists sessions, newest first. `dio resume <id>` picks up exactly
-where you left off: the phase, the plan and your position are all worked out from the
-transcript.
+**Come back.** `dio ls` lists sessions, numbered newest first. `dio resume` picks up the
+newest exactly where you left off; `dio resume 2` takes the second in the list, and
+`dio resume a16` takes the session whose id ends in `a16` (any unique tail works). A bare
+number always means the list position, so a tail made only of digits needs more of the id.
+Wherever a command takes an id, the same shorthands work. The phase, the plan and your
+position are all worked out from the transcript.
 
 **See what you know.** `dio graph` prints every proposition you've been taught, grouped by
 the session it was first learned in. Each session gets its own colored ●:
@@ -137,12 +140,12 @@ nothing to the graph.
 | command | does |
 |---|---|
 | `dio new [goal…]` | start a learning session (asks for the goal if none is given) |
-| `dio resume <id>` | continue a learning or practice session |
+| `dio resume [id]` | continue a learning or practice session (newest if no id) |
 | `dio practice [id… \| topic]` | start a practice session from graph sessions or a topic |
-| `dio ls` | list session ids, newest first |
-| `dio plan <id>` | print a session's plan map with your position |
+| `dio ls` | list session ids, numbered newest first |
+| `dio plan [id]` | print a session's plan map with your position |
 | `dio graph` | print the knowledge graph |
-| `dio extract <id>` | extract a session's unextracted prose into the graph now |
+| `dio extract [id]` | extract a session's unextracted prose into the graph now |
 
 In a session:
 
@@ -153,8 +156,7 @@ In a session:
 | `/demo` | learning | reopen the latest demo in the browser |
 | `/skip` | practice, at `thinking>` | abandon the problem; its solution is shown |
 | enter on an empty line | practice pause | ask for the next problem |
-| `/quit` | at `you>` or an empty `thinking>` | end the session |
-| Ctrl-D | any prompt | end the session |
+| `/quit`, Ctrl-D | any prompt (in practice, an empty `thinking>`) | end the session; an answer you already gave still counts |
 | Ctrl-C | during a reply | stop the reply; during end-of-session extraction, skip it |
 
 ## Configuration

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "store.h"
 
 session_t *S;
@@ -79,4 +81,70 @@ char *session_history_text(session_t *s) {
 	}
 	pthread_mutex_unlock(&s->mu);
 	return b.p;
+}
+
+typedef struct { char *id; time_t mt; } ent_t;
+static int newest_first(const void *a, const void *b) {
+	const ent_t *x = a, *y = b;
+	if (x->mt != y->mt) return x->mt < y->mt ? 1 : -1;
+	return strcmp(y->id, x->id);
+}
+
+int session_list(char ***ids) {
+	char dir[1100], p[1400];
+	*ids = NULL;
+	if (store_path(dir, sizeof dir, "chats/x")) return 0;
+	dir[strlen(dir) - 2] = 0;
+	DIR *d = opendir(dir);
+	if (!d) return 0;
+	ent_t *e = NULL;
+	int n = 0, cap = 0;
+	struct dirent *de;
+	while ((de = readdir(d))) {
+		size_t l = strlen(de->d_name);
+		if (l <= 6 || strcmp(de->d_name + l - 6, ".jsonl")) continue;
+		struct stat st;
+		snprintf(p, sizeof p, "%s/%s", dir, de->d_name);
+		if (stat(p, &st)) continue;
+		if (n == cap) e = realloc(e, sizeof *e * (cap = cap ? cap * 2 : 16));
+		e[n].id = strndup(de->d_name, l - 6);
+		e[n++].mt = st.st_mtime;
+	}
+	closedir(d);
+	qsort(e, n, sizeof *e, newest_first);
+	*ids = malloc(sizeof **ids * (n ? n : 1));
+	for (int i = 0; i < n; i++) (*ids)[i] = e[i].id;
+	free(e);
+	return n;
+}
+
+void session_list_free(char **ids, int n) {
+	for (int i = 0; i < n; i++) free(ids[i]);
+	free(ids);
+}
+
+int session_resolve(const char *arg, char *out, size_t n, char *err, size_t en) {
+	char **ids;
+	int cnt = session_list(&ids), rc = -1;
+	size_t al = arg ? strlen(arg) : 0;
+	if (!cnt) { snprintf(err, en, "no sessions yet (start one with dio new)"); goto done; }
+	if (!al) { snprintf(out, n, "%s", ids[0]); rc = 0; goto done; }
+	if (strspn(arg, "0123456789") == al) {
+		long k = strtol(arg, NULL, 10);
+		if (k >= 1 && k <= cnt) { snprintf(out, n, "%s", ids[k - 1]); rc = 0; }
+		else snprintf(err, en, "no session #%s: dio ls lists %d", arg, cnt);
+		goto done;
+	}
+	int hit = -1, hits = 0;
+	for (int i = 0; i < cnt; i++) {
+		size_t il = strlen(ids[i]);
+		if (!strcmp(ids[i], arg)) { hit = i; hits = 1; break; }
+		if (il > al && !strcmp(ids[i] + il - al, arg)) { hit = i; hits++; }
+	}
+	if (hits == 1) { snprintf(out, n, "%s", ids[hit]); rc = 0; }
+	else if (hits) snprintf(err, en, "%s matches %d sessions; type more of the id (see dio ls)", arg, hits);
+	else snprintf(err, en, "no such session %s (see dio ls)", arg);
+done:
+	session_list_free(ids, cnt);
+	return rc;
 }

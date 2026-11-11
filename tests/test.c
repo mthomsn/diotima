@@ -9,6 +9,9 @@
 #include "../src/coverage.h"
 #include "../src/graph.h"
 #include "../src/math.h"
+#include "../src/session.h"
+#include <sys/stat.h>
+#include <utime.h>
 
 static int fails, runs;
 #define CHECK(c) do { runs++; if (!(c)) { fails++; printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
@@ -422,7 +425,45 @@ static void test_math(void) {
 	graph_free(&g); cJSON_Delete(nl); cJSON_Delete(cl);
 }
 
+static void touch_chat(const char *dir, const char *id, time_t t) {
+	char p[1300];
+	snprintf(p, sizeof p, "%s/chats/%s.jsonl", dir, id);
+	FILE *f = fopen(p, "w"); fputs("{\"role\":\"user\",\"content\":[]}\n", f); fclose(f);
+	struct utimbuf u = { t, t }; utime(p, &u);
+}
+
+static void test_resolve(void) {
+	char dir[] = "/tmp/diotima-test-XXXXXX", p[1300], id[48], err[256];
+	CHECK(mkdtemp(dir) != NULL);
+	setenv("DIOTIMA_HOME", dir, 1);
+	CHECK(session_resolve(NULL, id, sizeof id, err, sizeof err) != 0 && strstr(err, "no sessions"));
+	CHECK(store_path(p, sizeof p, "chats/x") == 0);
+	touch_chat(dir, "c6aeff8c5ea16", 3000);
+	touch_chat(dir, "c6aeff8c5ba16", 2000);
+	touch_chat(dir, "c6aeff8c50001", 1000);
+#define R(a, want) do { id[0] = 0; int rc_ = session_resolve(a, id, sizeof id, err, sizeof err); CHECK(rc_ == 0 && !strcmp(id, want)); if (rc_ || strcmp(id, want)) printf("  %s -> %s / %s\n", a ? a : "(null)", id, err); } while (0)
+	R(NULL, "c6aeff8c5ea16");
+	R("", "c6aeff8c5ea16");
+	R("1", "c6aeff8c5ea16");
+	R("2", "c6aeff8c5ba16");
+	R("3", "c6aeff8c50001");
+	R("ea16", "c6aeff8c5ea16");
+	R("c6aeff8c5ba16", "c6aeff8c5ba16");
+	R("c50001", "c6aeff8c50001");
+#undef R
+	CHECK(session_resolve("4", id, sizeof id, err, sizeof err) != 0 && strstr(err, "lists 3"));
+	/* all digits always means an ls number, never a tail */
+	CHECK(session_resolve("50001", id, sizeof id, err, sizeof err) != 0 && strstr(err, "lists 3"));
+	CHECK(session_resolve("ba16", id, sizeof id, err, sizeof err) == 0 && !strcmp(id, "c6aeff8c5ba16"));
+	CHECK(session_resolve("a16", id, sizeof id, err, sizeof err) != 0 && strstr(err, "matches 2"));
+	CHECK(session_resolve("zz", id, sizeof id, err, sizeof err) != 0 && strstr(err, "no such session"));
+	char cmd[1300];
+	snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
+	if (system(cmd)) {}
+}
+
 int main(void) {
+	test_resolve();
 	test_math();
 	test_practice();
 	test_sha256(); test_coverage(); test_graph(); test_golden_graph();

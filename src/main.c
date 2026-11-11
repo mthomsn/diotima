@@ -277,11 +277,18 @@ static char *practice_context(int argc, char **argv) {
 }
 
 static int cmd_ls(void) {
-	char dir[1100], cmd[1300];
-	if (store_path(dir, sizeof dir, "chats/x")) return 1;
-	dir[strlen(dir) - 2] = 0;
-	snprintf(cmd, sizeof cmd, "ls -t '%s' 2>/dev/null | sed 's/\\.jsonl$//'", dir);
-	return system(cmd) ? 1 : 0;
+	char **ids;
+	int n = session_list(&ids);
+	for (int i = 0; i < n; i++) printf("%3d  %s\n", i + 1, ids[i]);
+	session_list_free(ids, n);
+	return 0;
+}
+
+/* argv[2] as the learner typed it (number, suffix, id, or nothing = newest) → open it. */
+static void open_named(session_t *s, int argc, char **argv) {
+	char id[48], err[256];
+	if (session_resolve(argc > 2 ? argv[2] : NULL, id, sizeof id, err, sizeof err)) die(err);
+	if (session_open(s, id)) die("no such session (see dio ls)");
 }
 
 int main(int argc, char **argv) {
@@ -300,8 +307,7 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 	if (!strcmp(cmd, "extract")) {
-		if (argc < 3) die("extract needs a session id (see dio ls)");
-		if (session_open(&sess, argv[2])) die("no such session (see dio ls)");
+		open_named(&sess, argc, argv);
 		S = &sess;
 		if (mcp_start()) die("cannot start the tool server");
 		signal(SIGINT, on_sigint);
@@ -310,20 +316,20 @@ int main(int argc, char **argv) {
 		return rc;
 	}
 	if (!strcmp(cmd, "plan")) {
-		if (argc < 3) die("plan needs a session id (see dio ls)");
-		if (session_open(&sess, argv[2])) die("no such session (see dio ls)");
+		open_named(&sess, argc, argv);
 		S = &sess;
 		return print_plan();
 	}
 	if (strcmp(cmd, "new") && strcmp(cmd, "resume") && strcmp(cmd, "practice")) {
-		puts("usage: dio new [what you want to learn]\n       dio practice [graph-session-id… | topic]\n       dio resume <id>\n"
-			"       dio plan <id>\n       dio graph\n       dio extract <id>\n       dio ls");
+		puts("usage: dio new [what you want to learn]\n       dio practice [graph-session-id… | topic]\n       dio resume [id]\n"
+			"       dio plan [id]\n       dio graph\n       dio extract [id]\n       dio ls\n"
+			"id: full id, a unique tail of one, or its number in dio ls; omitted = newest");
 		return strcmp(cmd, "help") ? 1 : 0;
 	}
 	if (!(mechanic = store_mechanic())) die("config.json: \"mechanic\" must be \"quiz\" or \"explain\"");
 	int resume = !strcmp(cmd, "resume");
-	if (resume && argc < 3) die("resume needs a session id (see dio ls)");
-	if (session_open(&sess, resume ? argv[2] : NULL)) die(resume ? "no such session" : "cannot create session");
+	if (resume) open_named(&sess, argc, argv);
+	else if (session_open(&sess, NULL)) die("cannot create session");
 	S = &sess;
 	if (mcp_start()) die("cannot start the tool server");
 	signal(SIGINT, on_sigint);

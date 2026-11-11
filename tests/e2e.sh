@@ -59,6 +59,12 @@ ok "$(cat "$FAKE_OUT.au3")" 'Review submitted' "auditor review accepted"
 
 ok "$(cat "$FAKE_OUT.tu0")" "knowledge graph is empty" "prober reads the (empty) map"
 
+# /quit at a question's answer> prompt ends the session
+q=$(export DIOTIMA_HOME=$scratch/quitq FAKE_OUT=$scratch/quitq.r; mkdir -p "$DIOTIMA_HOME"; printf '/quit\n' | ./build/dio new "arithmetic" 2>&1; echo "rc=$?")
+ok "$q" "rc=0" "/quit at answer> exits cleanly"
+if grep -q "pick one" <<<"$q"; then echo "FAIL /quit is not taken as a bad answer"; fail=1; else echo "ok   /quit is not taken as a bad answer"; fi
+ok "$(cat "$scratch/quitq.r.tu1")" "learner closed the session" "the model is told the learner left"
+
 # ── practice from a graph session ──
 sid=$(basename "$f" .jsonl)
 cov_before=$(wc -l <"$DIOTIMA_HOME/graph/coverage.jsonl")
