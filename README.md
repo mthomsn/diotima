@@ -142,7 +142,7 @@ nothing to the graph.
 | `dio new [goal…]` | start a learning session (asks for the goal if none is given) |
 | `dio resume [id]` | continue a learning or practice session (newest if no id) |
 | `dio practice [id… \| topic]` | start a practice session from graph sessions or a topic |
-| `dio ls` | list session ids, numbered newest first |
+| `dio ls` | list sessions, numbered newest first, with what each set out to learn |
 | `dio plan [id]` | print a session's plan map with your position |
 | `dio graph` | print the knowledge graph |
 | `dio extract [id]` | extract a session's unextracted prose into the graph now |

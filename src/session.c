@@ -148,3 +148,32 @@ done:
 	session_list_free(ids, cnt);
 	return rc;
 }
+
+void session_title(const char *id, char *out, size_t n) {
+	char rel[128], p[1100], *line = NULL;
+	size_t cap = 0;
+	out[0] = 0;
+	snprintf(rel, sizeof rel, "chats/%s.jsonl", id);
+	if (store_path(p, sizeof p, rel)) return;
+	FILE *f = fopen(p, "r");
+	if (!f) return;
+	if (getline(&line, &cap, f) > 0) {
+		cJSON *m = cJSON_Parse(line);
+		const char *t = cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(m, "content"), 0), "text"));
+		if (t && !strncmp(t, "[Session context]", 17)) snprintf(out, n, "practice: from the knowledge map");
+		else if (t && !strncmp(t, "[Practice session]", 18)) { const char *nl = strchr(t, '\n'); snprintf(out, n, "practice: %s", nl ? nl + 1 : ""); }
+		else if (t) snprintf(out, n, "%s", t);
+		cJSON_Delete(m);
+	}
+	free(line);
+	fclose(f);
+	for (char *c = out; *c; c++) if (*c == '\n' || *c == '\t') *c = ' ';
+	size_t l = strlen(out), k = l;
+	if (l + 1 < n) return;
+	while (k && ((unsigned char)out[k - 1] & 0xC0) == 0x80) k--; /* clipped: drop a torn last character */
+	if (k) {
+		unsigned char c = (unsigned char)out[k - 1];
+		size_t want = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+		if (l - (k - 1) < want) out[k - 1] = 0;
+	}
+}

@@ -457,6 +457,20 @@ static void test_resolve(void) {
 	CHECK(session_resolve("ba16", id, sizeof id, err, sizeof err) == 0 && !strcmp(id, "c6aeff8c5ba16"));
 	CHECK(session_resolve("a16", id, sizeof id, err, sizeof err) != 0 && strstr(err, "matches 2"));
 	CHECK(session_resolve("zz", id, sizeof id, err, sizeof err) != 0 && strstr(err, "no such session"));
+	/* dio ls titles: the opening goal, practice topics, clipped on whole UTF-8 characters */
+	char t[64];
+#define W(name, body) do { snprintf(p, sizeof p, "%s/chats/%s.jsonl", dir, name); FILE *f_ = fopen(p, "w"); fputs(body "\n", f_); fclose(f_); } while (0)
+	W("t1", "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"recurrence relations\\nand more\"}]}");
+	W("t2", "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[Practice session] — topic:\\nbinomials\"}]}");
+	W("t3", "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[Session context] — picked\\n- [p1] x\"}]}");
+	W("t4", "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"aéé\"}]}");
+#undef W
+	session_title("t1", t, sizeof t); CHECK(!strcmp(t, "recurrence relations and more"));
+	session_title("t2", t, sizeof t); CHECK(!strcmp(t, "practice: binomials"));
+	session_title("t3", t, sizeof t); CHECK(!strcmp(t, "practice: from the knowledge map"));
+	session_title("t4", t, 5); CHECK(!strcmp(t, "a\xc3\xa9"));   /* "aé" + half an é → "aé" */
+	session_title("t4", t, 6); CHECK(!strcmp(t, "a\xc3\xa9\xc3\xa9")); /* fits exactly: kept */
+	session_title("nope", t, sizeof t); CHECK(t[0] == 0);
 	char cmd[1300];
 	snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
 	if (system(cmd)) {}

@@ -26,4 +26,7 @@ void session_list_free(char **ids, int n);
 /* Turn what the learner typed into a session id: NULL or "" = newest, a bare number N = the
  * Nth in `dio ls`, otherwise an exact id or a unique suffix of one. 0 on success, else err. */
 int session_resolve(const char *arg, char *out, size_t n, char *err, size_t en);
+/* What the session is about, one line: the learner's opening goal, or "practice: <topic>".
+ * Clipped to fit n (whole UTF-8 characters); "" if the transcript can't be read. */
+void session_title(const char *id, char *out, size_t n);
 #endif

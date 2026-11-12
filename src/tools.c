@@ -376,25 +376,6 @@ static char *tool_plan_init(const cJSON *a, int *is_error) {
 static const char *birth_of(const cJSON *n) { return S_(cJSON_GetArrayItem(cJSON_GetObjectItem(n, "provenance"), 0), "chatId"); }
 
 /* First user line of a chat, as its name. */
-static void chat_title(const char *id, char *out, size_t n) {
-	char rel[128], p[1100];
-	snprintf(rel, sizeof rel, "chats/%s.jsonl", id);
-	out[0] = 0;
-	if (store_path(p, sizeof p, rel)) return;
-	FILE *f = fopen(p, "r");
-	if (!f) return;
-	char *line = NULL;
-	size_t cap = 0;
-	if (getline(&line, &cap, f) > 0) {
-		cJSON *m = cJSON_Parse(line);
-		const char *t = S_(cJSON_GetArrayItem(cJSON_GetObjectItem(m, "content"), 0), "text");
-		if (t) { snprintf(out, n, "%.80s", t); out[strcspn(out, "\n")] = 0; }
-		cJSON_Delete(m);
-	}
-	free(line);
-	fclose(f);
-}
-
 char *tools_session_index(const graph_t *g, cJSON **ids_out) {
 	/* sessions in birth order of their first node; listed most recent first */
 	cJSON *ids = cJSON_CreateArray(), *count = cJSON_CreateObject(), *born = cJSON_CreateObject();
@@ -414,8 +395,8 @@ char *tools_session_index(const graph_t *g, cJSON **ids_out) {
 	int i = 0;
 	const cJSON *id;
 	cJSON_ArrayForEach(id, ids) {
-		char title[128], line[512];
-		chat_title(id->valuestring, title, sizeof title);
+		char title[81], line[512];
+		session_title(id->valuestring, title, sizeof title);
 		int c = (int)cJSON_GetObjectItemCaseSensitive(count, id->valuestring)->valuedouble;
 		int l = snprintf(line, sizeof line, "%d. %s (chat, %d proposition%s, born %.10s) — id: %s\n", ++i, title[0] ? title : id->valuestring,
 			c, c == 1 ? "" : "s", S_(born, id->valuestring), id->valuestring);

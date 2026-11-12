@@ -279,7 +279,14 @@ static char *practice_context(int argc, char **argv) {
 static int cmd_ls(void) {
 	char **ids;
 	int n = session_list(&ids);
-	for (int i = 0; i < n; i++) printf("%3d  %s\n", i + 1, ids[i]);
+	struct winsize ws;
+	int width = isatty(1) && !ioctl(1, TIOCGWINSZ, &ws) && ws.ws_col ? ws.ws_col : 100;
+	for (int i = 0; i < n; i++) {
+		char title[512];
+		int room = width - 7 - (int)strlen(ids[i]);  /* "%3d  " + id + "  " */
+		session_title(ids[i], title, room < 21 ? 21 : room + 1 > (int)sizeof title ? sizeof title : (size_t)room + 1);
+		printf("%3d  %s  %s\n", i + 1, ids[i], title);
+	}
 	session_list_free(ids, n);
 	return 0;
 }
