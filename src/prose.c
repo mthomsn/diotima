@@ -411,6 +411,8 @@ void prose_end(void) {
 	clear_word();
 }
 
+int prose_col(void) { return P.started ? P.linew + P.col : 0; }
+
 void prose_begin(void) {
 	P.gap = 1;
 	P.blank = 0;

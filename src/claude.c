@@ -59,16 +59,16 @@ static void on_event(const cJSON *ev, void *ctx) {
 		const cJSON *e = cJSON_GetObjectItem(ev, "event"), *d = cJSON_GetObjectItem(e, "delta");
 		const char *et = cJSON_GetStringValue(cJSON_GetObjectItem(e, "type")), *dt = cJSON_GetStringValue(cJSON_GetObjectItem(d, "type"));
 		if (et && dt && !strcmp(et, "content_block_delta") && !strcmp(dt, "text_delta")) {
-			pthread_mutex_lock(&term_mu);
+			term_lock();
 			out_text(cJSON_GetStringValue(cJSON_GetObjectItem(d, "text")));
-			pthread_mutex_unlock(&term_mu);
+			term_unlock();
 			streamed = 1;
 		}
 	} else if (!strcmp(type, "assistant")) {
 		const cJSON *content = cJSON_GetObjectItem(cJSON_GetObjectItem(ev, "message"), "content"), *b;
 		cJSON *msg = cJSON_CreateObject(), *arr = cJSON_AddArrayToObject(msg, "content");
 		cJSON_AddStringToObject(msg, "role", "assistant");
-		pthread_mutex_lock(&term_mu);
+		term_lock();
 		cJSON_ArrayForEach(b, content) {
 			const char *bt = cJSON_GetStringValue(cJSON_GetObjectItem(b, "type"));
 			if (!bt) continue;
@@ -99,7 +99,7 @@ static void on_event(const cJSON *ev, void *ctx) {
 		}
 		ensure_newline();
 		streamed = 0;
-		pthread_mutex_unlock(&term_mu);
+		term_unlock();
 		if (cJSON_GetArraySize(arr) == 0) { cJSON_Delete(msg); return; }
 		/* record first, then announce: a handler that runs sees its own call in the transcript */
 		cJSON *calls = cJSON_Duplicate(arr, 1);
@@ -133,10 +133,10 @@ static void on_event(const cJSON *ev, void *ctx) {
 		if (cJSON_GetArraySize(arr)) session_append(S, msg); else cJSON_Delete(msg);
 	} else if (!strcmp(type, "result")) {
 		if (cJSON_IsTrue(cJSON_GetObjectItem(ev, "is_error"))) {
-			pthread_mutex_lock(&term_mu);
+			term_lock();
 			ensure_newline();
 			fprintf(stderr, "dio: claude reported an error: %s\n", cJSON_GetStringValue(cJSON_GetObjectItem(ev, "result")) ?: "?");
-			pthread_mutex_unlock(&term_mu);
+			term_unlock();
 		}
 	}
 }
@@ -232,11 +232,13 @@ int claude_turn(const char *prompt_file, const tool_t *tools, int ntools, const 
 	claude_job_t j = { .prompt_file = prompt_file, .tools = tools, .ntools = ntools, .chan = MCP_CHAN_AGENT,
 		.builtin = builtin, .cwd = builtin && launch_dir[0] ? launch_dir : NULL,
 		.input = history, .errname = "claude", .on_event = on_event, .pid = &child };
+	term_spin(1);
 	int code = claude_run(&j);
+	term_spin(0);
 	free(history);
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	ensure_newline();
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	if (code && code != 128 + SIGTERM) {
 		char errpath[1100];
 		store_path(errpath, sizeof errpath, "tmp/claude.stderr");

@@ -111,9 +111,9 @@ static int practice_input(void) {
 		pthread_mutex_unlock(&S->mu);
 		char line[4096];
 		if (!problem) {
-			pthread_mutex_lock(&term_mu);
+			term_lock();
 			int r = term_ask_wakeable("\nyou (enter = next problem)> ", line, sizeof line);
-			pthread_mutex_unlock(&term_mu);
+			term_unlock();
 			if (r == 1) { if (jobs_deliver()) return 1; continue; }
 			if (r < 0 || !strcmp(line, "/quit")) return 0;
 			session_append_user_text(S, line[0] ? line : NEXT_PROBLEM_TEXT);
@@ -124,7 +124,7 @@ static int practice_input(void) {
 		char *buf = malloc(cap);
 		buf[0] = 0;
 		int eof = 0, skip = 0, woke = 0;
-		pthread_mutex_lock(&term_mu);
+		term_lock();
 		for (;;) {
 			int r = len ? term_ask("        > ", line, sizeof line) : term_ask_wakeable("\nthinking> ", line, sizeof line);
 			if (r == 1) { woke = 1; break; } /* a job result, with nothing typed yet */
@@ -139,7 +139,7 @@ static int practice_input(void) {
 			len += l;
 		}
 		if (skip) dismiss_problem(problem);
-		pthread_mutex_unlock(&term_mu);
+		term_unlock();
 		cJSON_Delete(problem);
 		if (woke) { free(buf); if (jobs_deliver()) return 1; continue; }
 		if (skip) { free(buf); continue; }
@@ -171,10 +171,10 @@ static void converse(void) {
 		if (practice) { if (!practice_input()) return; continue; }
 		int woke = 0;
 		for (;;) {
-			pthread_mutex_lock(&term_mu);
+			term_lock();
 			extract_drain_notes();
 			int r = term_ask_wakeable("\nyou> ", line, sizeof line);
-			pthread_mutex_unlock(&term_mu);
+			term_unlock();
 			if (r == 1) { if (jobs_deliver()) { woke = 1; break; } continue; }
 			if (r < 0 || !strcmp(line, "/quit")) return;
 			if (!strcmp(line, "/phase")) { printf("%s\n", phase_name(phase_of(S->messages))); continue; }
@@ -208,10 +208,10 @@ static char *practice_context(int argc, char **argv) {
 	if (all_ids) for (int i = 0; i < argc; i++) cJSON_AddItemToArray(picked, cJSON_CreateString(argv[i]));
 	else if (argc) for (int i = 0; i < argc; i++) { if (i) strncat(topic, " ", sizeof topic - strlen(topic) - 1); strncat(topic, argv[i], sizeof topic - strlen(topic) - 1); }
 	else {
-		pthread_mutex_lock(&term_mu);
+		term_lock();
 		if (nids) printf("Knowledge graph sessions:\n%s", idx);
 		int eof = term_ask(nids ? "pick sessions (e.g. 1,3) or type a topic> " : "what do you want to practice?> ", topic, sizeof topic);
-		pthread_mutex_unlock(&term_mu);
+		term_unlock();
 		if (eof || !topic[0]) { free(idx); cJSON_Delete(ids); cJSON_Delete(picked); graph_free(&g); return NULL; }
 		int numeric = nids > 0;
 		for (char *c = topic; *c; c++) if (!((*c >= '0' && *c <= '9') || *c == ',' || *c == ' ')) numeric = 0;
@@ -351,9 +351,9 @@ int main(int argc, char **argv) {
 		char goal[4096] = "";
 		for (int i = 2; i < argc; i++) { strncat(goal, i > 2 ? " " : "", sizeof goal - strlen(goal) - 1); strncat(goal, argv[i], sizeof goal - strlen(goal) - 1); }
 		if (!goal[0]) {
-			pthread_mutex_lock(&term_mu);
+			term_lock();
 			int eof = term_ask("what do you want to learn?> ", goal, sizeof goal);
-			pthread_mutex_unlock(&term_mu);
+			term_unlock();
 			if (eof || !goal[0]) return 0;
 		}
 		session_append_user_text(S, goal);

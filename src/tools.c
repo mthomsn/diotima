@@ -157,7 +157,7 @@ static void show_question(const cJSON *a) {
 	if (S_(a, "details")) prose_block(S_(a, "details"), "  ", NULL, 0);
 }
 
-#define EOF_OUT(...) do { __VA_ARGS__; pthread_mutex_unlock(&term_mu); count_open(-1); return eof_result(is_error); } while (0)
+#define EOF_OUT(...) do { __VA_ARGS__; term_unlock(); count_open(-1); return eof_result(is_error); } while (0)
 
 static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	char msg[1024] = "";
@@ -168,7 +168,7 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	int multi = cJSON_IsTrue(cJSON_GetObjectItem(a, "multiSelect")), n = cJSON_GetArraySize(opts);
 	char line[2048], thinking[2048] = "", reading[2048] = "";
 	count_open(1);
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
 	show_question(a);
 	for (int i = 0; i < n; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, i), "label")); }
@@ -224,7 +224,7 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 		free(right);
 	}
 	prose_block(S_(a, "explanation"), NULL, NULL, 0);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	count_open(-1);
 
 	cJSON *r = cJSON_CreateObject();
@@ -250,14 +250,14 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	if (msg[0]) { *is_error = 1; return rejected("explain", msg); }
 	char answer[4096], thinking[2048] = "", reading[2048] = "";
 	count_open(1);
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
 	show_question(a);
 	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
 	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 	printf("\033[2m  committed answer:\033[0m\n");
 	prose_block(S_(a, "correctAnswer"), NULL, NULL, 0);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	count_open(-1);
 
 	cJSON *r = cJSON_CreateObject();
@@ -282,7 +282,7 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 	if (blank(S_(a, "question"))) { *is_error = 1; return strdup("ask_user_question rejected: `question` is empty."); }
 	if (n == 1) { *is_error = 1; return strdup("ask_user_question rejected: `options` needs 2+ entries (or omit it for free text)."); }
 	count_open(1);
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	show_question(a);
 	for (int i = 0; i < n; i++) {
 		const cJSON *o = cJSON_GetArrayItem(opts, i);
@@ -314,7 +314,7 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 		printf("  pick 1-%d or o\n", n);
 	}
 	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	count_open(-1);
 	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
 	char *s = cJSON_PrintUnformatted(r);
@@ -367,10 +367,10 @@ static char *tool_plan_init(const cJSON *a, int *is_error) {
 		return m;
 	}
 	char *view = tools_plan_view(tree);
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	printf("\n\033[1mplan\033[0m\n%s\n", view);
 	fflush(stdout);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	free(view);
 	cJSON *r = cJSON_CreateObject(), *ids = cJSON_AddArrayToObject(r, "nodeIds");
 	const cJSON *nd;
@@ -545,12 +545,12 @@ static char *tool_problem(const cJSON *a, int *is_error) {
 	pthread_mutex_unlock(&S->mu);
 	if (active) addp(msg, sizeof msg, "a problem is already active — call conclude on it before posing the next one");
 	if (msg[0]) { *is_error = 1; return rejected("problem", msg); }
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	printf("\n\033[1m▸ Problem\033[0m \033[2m· %s\033[0m\n", S_(a, "mode"));
 	prose_block(S_(a, "statement"), "  ", NULL, 0);
 	printf("\033[2m  work it below; a blank line sends · /skip dismisses\033[0m\n");
 	fflush(stdout);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	return strdup("Problem posed — the turn ends here; the learner's thinking traces and answer commits arrive as labeled messages.");
 }
 
@@ -572,12 +572,12 @@ static char *tool_conclude(const cJSON *a, int *is_error) {
 	pthread_mutex_unlock(&S->mu);
 	if (!problem) addp(msg, sizeof msg, "no active problem to conclude — pose one first");
 	if (msg[0]) { cJSON_Delete(problem); *is_error = 1; return rejected("conclude", msg); }
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	printf("\n\033[1m── %s ──\033[0m\n", S_(a, "outcome"));
 	prose_block(S_(a, "verdict"), NULL, NULL, 0);
 	tools_show_solution(problem);
 	fflush(stdout);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	cJSON_Delete(problem);
 	return strdup(CONCLUDE_ACK);
 }

@@ -64,10 +64,10 @@ static int resolve(const char *p, char *out, size_t n) {
 }
 
 static void dim(const char *a, const char *b) {
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	printf("\033[2m· %s%s\033[0m\n", a, b ? b : "");
 	fflush(stdout);
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 }
 
 /* ── steer texts (the original's) ──────────────────────────────────────── */
@@ -644,9 +644,9 @@ static char *t_show_image(const cJSON *a, int *is_error) {
 	char path[1100];
 	if (resolve(S_(a, "path"), path, sizeof path)) return err(is_error, "show_image rejected: \"%s\" is not a readable file — check the path.", S_(a, "path"));
 	if (!img_is_image_path(path)) return err(is_error, "show_image rejected: \"%s\" is not an image (jpg, png, gif, webp, bmp).", S_(a, "path"));
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	img_show(path, S_(a, "caption"));
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	return fmt("Shown to the learner: %s%s", S_(a, "path"), S_(a, "caption") ? " (with caption)" : "");
 }
 
@@ -722,7 +722,7 @@ int jobs_deliver(void) {
 	done_head = done_tail = NULL;
 	pthread_mutex_unlock(&mu);
 	int n = 0;
-	pthread_mutex_lock(&term_mu);
+	term_lock();
 	while (d) {
 		delivery_t *next = d->next;
 		char *body = steer(d, d->text);
@@ -733,7 +733,7 @@ int jobs_deliver(void) {
 		d = next;
 		n++;
 	}
-	pthread_mutex_unlock(&term_mu);
+	term_unlock();
 	return n;
 }
 

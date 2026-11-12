@@ -14,6 +14,7 @@ void prose_begin(void);                    /* a new turn: blank line before its 
 void prose_text(const char *s, size_t n);  /* markdown */
 void prose_atom(const char *s, size_t n);  /* verbatim, one unbreakable word piece */
 void prose_end(void);                      /* flush, end the line, clear styles */
+int prose_col(void);                       /* the cursor's column on the teacher's current line (0 at a line start) */
 
 /* One whole model-written field (math typeset, markdown, wrapped), each line
  * behind a prefix: first for the first line, rest for the others (NULL = same
