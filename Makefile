@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS = -std=gnu11 -Wall -Wextra -O1 -g -DPROMPTS_DIR='"$(CURDIR)/prompts"'
-LIB = src/math.c src/plan.c src/phase.c src/store.c src/sha256.c src/coverage.c src/graph.c vendor/cJSON.c
+LIB = src/math.c src/prose.c src/plan.c src/phase.c src/store.c src/sha256.c src/coverage.c src/graph.c vendor/cJSON.c
 APP = src/session.c src/mcp.c src/claude.c src/tools.c src/agent.c src/term.c src/extract.c \
       src/jobs.c src/chrome.c src/img.c src/proc.c
 LIBS = -lpthread -lm

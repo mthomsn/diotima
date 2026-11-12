@@ -336,7 +336,8 @@ static void finish(math_stream_t *m) {
 	if (m->st == INLINE || m->oneline) {
 		u = math_unicode(m->buf);
 		if (m->oneline) for (char *c = u; *c; c++) if (*c == '\n') *c = ' ';
-		emit(m, u, strlen(u));
+		if (m->atom && !m->oneline && *u) { m->eat_nl = 0; m->atom(u, strlen(u)); m->bol = 0; }
+		else emit(m, u, strlen(u));
 	} else {
 		if (!m->bol) emit(m, "\n", 1);
 		if (math_display && !math_display(m->buf)) m->bol = 1;

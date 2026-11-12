@@ -15,6 +15,7 @@ extern int (*math_display)(const char *tex);
 
 typedef struct {
 	void (*out)(const char *s, size_t n);
+	void (*atom)(const char *s, size_t n); /* optional: inline math goes here, whole, instead of out */
 	int oneline; /* display math stays in the line, as Unicode */
 	int st, bol, ticks, bs, dollar, close, eat_nl;
 	char *buf;

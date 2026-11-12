@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "math.h"
+#include "prose.h"
 #include "session.h"
 #include "store.h"
 #include "term.h"
@@ -17,22 +18,17 @@ static volatile pid_t child = 0;
 
 void claude_interrupt(void) { if (child > 0) kill(child, SIGTERM); }
 
-static int streamed, col0 = 1;
+static int streamed;
 
-static void raw_out(const char *s, size_t n) {
-	fwrite(s, 1, n, stdout);
-	col0 = s[n - 1] == '\n';
-	fflush(stdout);
-}
-
-/* Model prose passes through the math filter: $…$ is shown typeset. */
-static math_stream_t ms = { .out = raw_out, .bol = 1 };
+/* Model prose passes through the math filter ($…$ shown typeset), then the prose
+ * formatter (markdown, wrapping, the │ gutter). */
+static math_stream_t ms = { .out = prose_text, .atom = prose_atom, .bol = 1 };
 
 static void out_text(const char *t) { if (t && *t) math_feed(&ms, t); }
 
 static void ensure_newline(void) {
 	math_flush(&ms);
-	if (!col0) raw_out("\n", 1);
+	prose_end();
 }
 
 static const char *strip(const char *name) {
@@ -92,7 +88,6 @@ static void on_event(const cJSON *ev, void *ctx) {
 					if (!arg) arg = cJSON_GetStringValue(cJSON_GetObjectItem(in, "pattern"));
 					ensure_newline();
 					printf("\033[2m· %s %s\033[0m\n", nm, arg ? arg : "");
-					col0 = 1;
 				}
 				cJSON *nb = cJSON_CreateObject();
 				cJSON_AddStringToObject(nb, "type", "tool_use");
@@ -233,6 +228,7 @@ const char *claude_launch_dir(void) { return launch_dir; }
 int claude_turn(const char *prompt_file, const tool_t *tools, int ntools, const char *builtin) {
 	char *history = session_history_text(S);
 	streamed = 0;
+	prose_begin();
 	claude_job_t j = { .prompt_file = prompt_file, .tools = tools, .ntools = ntools, .chan = MCP_CHAN_AGENT,
 		.builtin = builtin, .cwd = builtin && launch_dir[0] ? launch_dir : NULL,
 		.input = history, .errname = "claude", .on_event = on_event, .pid = &child };

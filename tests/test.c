@@ -9,6 +9,7 @@
 #include "../src/coverage.h"
 #include "../src/graph.h"
 #include "../src/math.h"
+#include "../src/prose.h"
 #include "../src/session.h"
 #include <sys/stat.h>
 #include <utime.h>
@@ -476,7 +477,68 @@ static void test_resolve(void) {
 	if (system(cmd)) {}
 }
 
+static struct { char *p; size_t n, cap; } prose_cap;
+static void prose_sink(const char *s, size_t n) {
+	if (prose_cap.n + n + 1 > prose_cap.cap) prose_cap.p = realloc(prose_cap.p, prose_cap.cap = (prose_cap.n + n + 1) * 2);
+	memcpy(prose_cap.p + prose_cap.n, s, n);
+	prose_cap.p[prose_cap.n += n] = 0;
+}
+/* Render through math + prose at width w; escapes stripped unless keep. */
+static char *render_k(const char *in, int w, int keep) {
+	void (*saved)(const char *, size_t) = prose_out;
+	prose_cap.n = 0; prose_sink("", 0);
+	prose_out = prose_sink;
+	prose_width = w; prose_begin();
+	math_stream_t ms = { .out = prose_text, .atom = prose_atom, .bol = 1 };
+	for (const char *p = in; *p; p += 5) { char c[6] = {0}; strncpy(c, p, 5); math_feed(&ms, c); if (strlen(p) < 5) break; }
+	math_flush(&ms); prose_end();
+	prose_out = saved; prose_width = -1;
+	if (keep) return prose_cap.p;
+	char *o = prose_cap.p, *d = o;
+	for (char *s = o; *s; s++) { if (*s == 033) { while (*s && *s != 'm') s++; continue; } *d++ = *s; }
+	*d = 0;
+	return o;
+}
+static char *render(const char *in, int w) { return render_k(in, w, 0); }
+
+static void test_prose(void) {
+#define P(in, w, want) do { char *g_ = render(in, w); CHECK(!strcmp(g_, want)); if (strcmp(g_, want)) printf("  prose got:\n%s\n  want:\n%s\n", g_, want); } while (0)
+	P("one two three four", 0, "\n│ one two three four\n");
+	P("one two three four", 12, "\n│ one two\n│ three four\n");
+	P("**bold** and *it* and `a*b`", 0, "\n│ bold and it and a*b\n");
+	P("2*3 = 6 and a * b", 0, "\n│ 2*3 = 6 and a * b\n");
+	P("- alpha beta gamma\n10. delta epsilon", 14, "\n│ • alpha beta\n│   gamma\n│ 10. delta\n│     epsilon\n");
+	P("## Head\n\n\n\npara", 0, "\n│ Head\n│\n│ para\n");
+	P("see\n```c\nx  =  1;\n```\nok", 0, "\n│ see\n│ x  =  1;\n│ ok\n");
+	P("rule $a_{n-1} + 2a_{n-2}$ done", 12, "\n│ rule\n│ aₙ₋₁ + 2aₙ₋₂\n│ done\n");
+	P("éééé éééé", 11, "\n│ éééé éééé\n");
+	/* style survives a wrap: the escape is resent after the gutter */
+	/* blocks: own prefixes, bar when NULL, and the teacher's half-built line untouched */
+	{
+		void (*saved)(const char *, size_t) = prose_out;
+		prose_out = prose_sink; prose_width = 16;
+#define B(text, f, r, want) do { prose_cap.n = 0; prose_sink("", 0); prose_block(text, f, r, 0); \
+	char *o_ = prose_cap.p, *d_ = o_; for (char *c_ = o_; *c_; c_++) { if (*c_ == 033) { while (*c_ && *c_ != 'm') c_++; continue; } *d_++ = *c_; } *d_ = 0; \
+	CHECK(!strcmp(o_, want)); if (strcmp(o_, want)) printf("  block got:\n%s\n  want:\n%s\n", o_, want); } while (0)
+		B("is a subspace only if", "  2) ", "     ", "  2) is a\n     subspace\n     only if\n");
+		B("one two\n\nthree", NULL, NULL, "│ one two\n│\n│ three\n");
+		B("", "? ", NULL, "? \n");
+		prose_begin();
+		prose_text("half", 4);              /* teacher mid-word */
+		prose_block("card", "  ", NULL, 0);
+		prose_cap.n = 0; prose_sink("", 0);
+		prose_text("way\n", 4);
+		CHECK(strstr(prose_cap.p, "halfway") != NULL);
+		prose_end();
+#undef B
+		prose_out = saved; prose_width = -1;
+	}
+	CHECK(strstr(render_k("**aa bb**", 6, 1), "│\033[0m \033[0m\033[1mbb") != NULL);
+#undef P
+}
+
 int main(void) {
+	test_prose();
 	test_resolve();
 	test_math();
 	test_practice();

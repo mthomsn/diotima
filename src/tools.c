@@ -9,6 +9,7 @@
 #include "plan.h"
 #include "graph.h"
 #include "math.h"
+#include "prose.h"
 #include "jobs.h"
 #include "session.h"
 #include "term.h"
@@ -127,11 +128,12 @@ static int parse_choice(const char *s, int nopts, int multi, int *out) {
 	return n;
 }
 
-/* A field the model wrote: math typeset, a literal backslash-n shown as the newline it meant. */
-static void put_text(const char *head, const char *body) {
-	fputs(head, stdout);
-	math_puts(body ? body : "");
-	fputc('\n', stdout);
+/* A numbered option, wrapped with its continuation lines under the text. */
+static void put_option(const char *num, const char *text) {
+	char pre[32], rest[32];
+	snprintf(pre, sizeof pre, "  %s) ", num);
+	snprintf(rest, sizeof rest, "%*s", (int)strlen(pre), "");
+	prose_block(text, pre, rest, 0);
 }
 
 /* Question prompts: "/quit" (or Ctrl-D) ends the session from inside a question too. */
@@ -150,8 +152,9 @@ static int check_gate(char *reading, size_t n) {
 }
 
 static void show_question(const cJSON *a) {
-	printf("\n"); put_text("\033[1m? ", S_(a, "question")); printf("\033[0m");
-	if (S_(a, "details")) put_text("  ", S_(a, "details"));
+	printf("\n");
+	prose_block(S_(a, "question"), "\033[1m? ", "  ", 1);
+	if (S_(a, "details")) prose_block(S_(a, "details"), "  ", NULL, 0);
 }
 
 #define EOF_OUT(...) do { __VA_ARGS__; pthread_mutex_unlock(&term_mu); count_open(-1); return eof_result(is_error); } while (0)
@@ -168,7 +171,7 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	pthread_mutex_lock(&term_mu);
 	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
 	show_question(a);
-	for (int i = 0; i < n; i++) { printf("  %d) ", i + 1); put_text("", S_(cJSON_GetArrayItem(opts, i), "label")); }
+	for (int i = 0; i < n; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, i), "label")); }
 	printf("  0) I don't know\n");
 	int picks[64], np;
 	for (;;) {
@@ -205,16 +208,22 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	printf("%s\n", dont ? "\033[33m– no guess recorded\033[0m" : correct ? "\033[32m✓ correct\033[0m" : "\033[31m✗ not quite\033[0m");
 	if (!correct) {
 		const cJSON *o;
-		printf("  correct: ");
+		size_t cap = 64, len = 0;
+		char *right = malloc(cap);
+		len = (size_t)snprintf(right, cap, "correct: ");
 		cJSON_ArrayForEach(o, opts) {
-			const char *v = optval(o);
+			const char *v = optval(o), *lb = S_(o, "label") ? S_(o, "label") : "";
 			int hit = cJSON_IsArray(ca) ? 0 : !strcmp(v, ca->valuestring);
 			for (int j = 0; cJSON_IsArray(ca) && j < cJSON_GetArraySize(ca); j++) if (!strcmp(v, cJSON_GetArrayItem(ca, j)->valuestring)) hit = 1;
-			if (hit) { math_puts(S_(o, "label")); printf("; "); }
+			if (!hit) continue;
+			size_t l = strlen(lb);
+			while (len + l + 3 > cap) right = realloc(right, cap *= 2);
+			len += (size_t)sprintf(right + len, "%s%s", len > 9 ? "; " : "", lb);
 		}
-		printf("\n");
+		prose_block(right, "  ", NULL, 0);
+		free(right);
 	}
-	put_text("  ", S_(a, "explanation"));
+	prose_block(S_(a, "explanation"), NULL, NULL, 0);
 	pthread_mutex_unlock(&term_mu);
 	count_open(-1);
 
@@ -246,7 +255,8 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	show_question(a);
 	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
 	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
-	put_text("\033[2m  committed answer:\033[0m\n  ", S_(a, "correctAnswer"));
+	printf("\033[2m  committed answer:\033[0m\n");
+	prose_block(S_(a, "correctAnswer"), NULL, NULL, 0);
 	pthread_mutex_unlock(&term_mu);
 	count_open(-1);
 
@@ -276,10 +286,12 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 	show_question(a);
 	for (int i = 0; i < n; i++) {
 		const cJSON *o = cJSON_GetArrayItem(opts, i);
-		printf("  %d) ", i + 1);
-		math_puts(S_(o, "label"));
-		if (S_(o, "description")) { printf(" — "); math_puts(S_(o, "description")); }
-		printf("\n");
+		const char *lb = S_(o, "label") ? S_(o, "label") : "", *ds = S_(o, "description");
+		char k[12], *t = malloc(strlen(lb) + (ds ? strlen(ds) : 0) + 8);
+		snprintf(k, sizeof k, "%d", i + 1);
+		sprintf(t, ds ? "%s — %s" : "%s", lb, ds);
+		put_option(k, t);
+		free(t);
 	}
 	if (n) printf("  o) Other (type your own)\n");
 	char line[2048], thinking[2048] = "";
@@ -505,7 +517,8 @@ static const char *resolve_target(const cJSON *nodes, const char *t) {
 static const cJSON *active_problem_locked(void) { return phase_active_problem(S->messages); }
 
 void tools_show_solution(const cJSON *problem) {
-	put_text("\033[2m  model solution:\033[0m\n", S_(problem, "modelSolution"));
+	printf("\033[2m  model solution:\033[0m\n");
+	prose_block(S_(problem, "modelSolution"), NULL, NULL, 0);
 }
 
 static char *tool_problem(const cJSON *a, int *is_error) {
@@ -534,7 +547,7 @@ static char *tool_problem(const cJSON *a, int *is_error) {
 	if (msg[0]) { *is_error = 1; return rejected("problem", msg); }
 	pthread_mutex_lock(&term_mu);
 	printf("\n\033[1m▸ Problem\033[0m \033[2m· %s\033[0m\n", S_(a, "mode"));
-	put_text("", S_(a, "statement"));
+	prose_block(S_(a, "statement"), "  ", NULL, 0);
 	printf("\033[2m  work it below; a blank line sends · /skip dismisses\033[0m\n");
 	fflush(stdout);
 	pthread_mutex_unlock(&term_mu);
@@ -561,7 +574,7 @@ static char *tool_conclude(const cJSON *a, int *is_error) {
 	if (msg[0]) { cJSON_Delete(problem); *is_error = 1; return rejected("conclude", msg); }
 	pthread_mutex_lock(&term_mu);
 	printf("\n\033[1m── %s ──\033[0m\n", S_(a, "outcome"));
-	put_text("", S_(a, "verdict"));
+	prose_block(S_(a, "verdict"), NULL, NULL, 0);
 	tools_show_solution(problem);
 	fflush(stdout);
 	pthread_mutex_unlock(&term_mu);

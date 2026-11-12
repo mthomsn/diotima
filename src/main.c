@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
 		if (!ctx) return 0;
 		session_append_user_text(S, ctx);
 		free(ctx);
-		printf("session %s\n\n", S->id);
+		printf("session %s\n", S->id);
 	} else if (!resume) {
 		char goal[4096] = "";
 		for (int i = 2; i < argc; i++) { strncat(goal, i > 2 ? " " : "", sizeof goal - strlen(goal) - 1); strncat(goal, argv[i], sizeof goal - strlen(goal) - 1); }
@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
 			if (eof || !goal[0]) return 0;
 		}
 		session_append_user_text(S, goal);
-		printf("session %s\n\n", S->id);
+		printf("session %s\n", S->id);
 	}
 	if (resume) jobs_recover(); /* jobs a previous run left outstanding were aborted */
 	converse();
