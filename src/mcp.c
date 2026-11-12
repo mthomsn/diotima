@@ -12,6 +12,9 @@
 
 #define MAXSEEN 512
 #define ADMIT_WAIT_S 30
+/* A quiz stays open until the learner answers; the CLI aborts a silent tool after
+ * 300s unless the server config raises it (MCP_TOOL_TIMEOUT no longer does). */
+#define TOOL_TIMEOUT_MS 1800000
 
 static char token[33];
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
@@ -292,8 +295,8 @@ int mcp_start(void) {
 	getsockname(ls, (struct sockaddr *)&a, &al);
 	for (int c = 0; c < MCP_CHANNELS; c++)
 		snprintf(ch[c].config, sizeof ch[c].config,
-			"{\"mcpServers\":{\"diotima\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:%d/mcp/%d\",\"headers\":{\"Authorization\":\"Bearer %s\"}}}}",
-			ntohs(a.sin_port), c, token);
+			"{\"mcpServers\":{\"diotima\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:%d/mcp/%d\",\"timeout\":%d,\"headers\":{\"Authorization\":\"Bearer %s\"}}}}",
+			ntohs(a.sin_port), c, TOOL_TIMEOUT_MS, token);
 	pthread_t th;
 	pthread_create(&th, NULL, accept_loop, (void *)(long)ls);
 	pthread_detach(th);
