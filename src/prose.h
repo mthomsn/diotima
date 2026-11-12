@@ -2,7 +2,7 @@
 #define PROSE_H
 #include <stddef.h>
 /* Teacher prose on the terminal: markdown rendered (**bold**, *italic*, `code`,
- * # headings, - and 1. lists, ``` fences), word-wrapped with hanging indents,
+ * # headings, - and 1. lists, ``` fences, | tables as a grid), word-wrapped with hanging indents,
  * behind a dim │ gutter. Streams a word at a time. Text reaches it after the
  * math filter, so math arrives as atoms: unbreakable, never read as markdown. */
 

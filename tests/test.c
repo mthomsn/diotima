@@ -512,6 +512,12 @@ static void test_prose(void) {
 	P("see\n```c\nx  =  1;\n```\nok", 0, "\n│ see\n│ x  =  1;\n│ ok\n");
 	P("rule $a_{n-1} + 2a_{n-2}$ done", 12, "\n│ rule\n│ aₙ₋₁ + 2aₙ₋₂\n│ done\n");
 	P("éééé éééé", 11, "\n│ éééé éééé\n");
+	/* tables: a grid, cells wrapped to fit, alignment, math and <br> in cells */
+	P("| a | long cell here |\n|:-:|--:|\n| $x^2$ | b<br>c |\nend", 20,
+		"\n│ ┌────┬───────────┐\n│ │ a  │ long cell │\n│ │    │      here │\n│ ├────┼───────────┤\n"
+		"│ │ x² │         b │\n│ │    │         c │\n│ └────┴───────────┘\n│ end\n");
+	P("| h |\n|---|", 0, "\n│ ┌───┐\n│ │ h │\n│ └───┘\n");
+	P("| not a table\nnext", 0, "\n│ | not a table\n│ next\n");
 	/* style survives a wrap: the escape is resent after the gutter */
 	/* blocks: own prefixes, bar when NULL, and the teacher's half-built line untouched */
 	{
