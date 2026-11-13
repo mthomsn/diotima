@@ -151,6 +151,12 @@ static int check_gate(char *reading, size_t n) {
 	return q_ask("thinking while reading (optional, enter to skip)> ", reading, n);
 }
 
+/* Asked right after the question is shown, so he can think out loud while
+ * working it out rather than recounting afterwards. -1 on EOF. */
+static int ask_thinking(char *buf, size_t n) {
+	return q_ask("thinking as you work it out (optional, enter to skip)> ", buf, n);
+}
+
 static void show_question(const cJSON *a) {
 	printf("\n");
 	prose_block(S_(a, "question"), "\033[1m? ", "  ", 1);
@@ -173,6 +179,7 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	show_question(a);
 	for (int i = 0; i < n; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, i), "label")); }
 	printf("  0) I don't know\n");
+	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT();
 	int picks[64], np;
 	for (;;) {
 		if (q_ask(multi ? "answer (e.g. 1,3)> " : "answer> ", line, sizeof line)) EOF_OUT();
@@ -187,7 +194,6 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 		if (conf < 0) conf = 0;
 		if (conf > 100) conf = 100;
 	}
-	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 
 	cJSON *picked = cJSON_CreateArray();
 	for (int i = 0; i < np; i++) cJSON_AddItemToArray(picked, cJSON_CreateString(optval(cJSON_GetArrayItem(opts, picks[i] - 1))));
@@ -253,8 +259,8 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	term_lock();
 	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
 	show_question(a);
+	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT();
 	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
-	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 	printf("\033[2m  committed answer:\033[0m\n");
 	prose_block(S_(a, "correctAnswer"), NULL, NULL, 0);
 	term_unlock();
@@ -297,6 +303,7 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 	char line[2048], thinking[2048] = "";
 	cJSON *r = cJSON_CreateObject();
 	cJSON_AddStringToObject(r, "kind", "ask");
+	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT(cJSON_Delete(r));
 	for (;;) {
 		if (q_ask(n ? (multi ? "answer (e.g. 1,3 or o)> " : "answer> ") : "answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
 		if (!n) { cJSON_AddStringToObject(r, "answer", line); break; }
@@ -313,7 +320,6 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 		}
 		printf("  pick 1-%d or o\n", n);
 	}
-	if (q_ask("thinking (optional, enter to skip)> ", thinking, sizeof thinking)) { thinking[0] = 0; S->quit = 1; }
 	term_unlock();
 	count_open(-1);
 	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);

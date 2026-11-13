@@ -13,8 +13,8 @@ count() { grep -o -- "$2" <<<"$1" | wc -l | tr -d ' '; }
 # ── multiple choice (default mechanic) ──
 export DIOTIMA_HOME=$scratch/quiz FAKE_OUT=$scratch/quiz.r
 mkdir -p "$DIOTIMA_HOME"
-# probe: pick 2, 90%, thinking | predict: 1, 60%, - | check: open, reading note, 2, default, - | /plan
-out=$(printf '2\n90\nfour obviously\n1\n60\n\n\nrows of dots\n2\n\n\n/plan\n' | ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
+# probe: thinking, 2, 90% | predict: -, 1, 60% | check: open, reading note, -, 2, default | /plan
+out=$(printf 'four obviously\n2\n90\n\n1\n60\n\nrows of dots\n\n2\n\n/plan\n' | ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
 echo "$out"
 plain=$(sed $'s/\033\\[[0-9;]*m//g' <<<"$out")
 f=$(ls "$DIOTIMA_HOME"/chats/*.jsonl)
@@ -93,9 +93,9 @@ ok "$(cat "$FAKE_OUT.co3")" "no active problem" "conclude after a dismissal is r
 export DIOTIMA_HOME=$scratch/explain FAKE_OUT=$scratch/explain.r
 mkdir -p "$DIOTIMA_HOME"
 echo '{"mechanic":"explain"}' >"$DIOTIMA_HOME/config.json"
-# probe: answer, - | predict: answer, - | check: open, -, (don't know), -
+# probe: -, answer | predict: -, answer | check: open, -, -, (don't know)
 # a tiny budget: the probe's prose alone triggers a background run while the teacher works
-out=$(printf 'four, two and two\n\ncount on one\n\n\n\n\n\n' | DIOTIMA_CHUNK_TOKENS=5 ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
+out=$(printf '\nfour, two and two\n\ncount on one\n\n\n\n\n' | DIOTIMA_CHUNK_TOKENS=5 ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
 echo "$out"
 ok "$(cat "$FAKE_OUT.tu1")" 'kind\\":\\"explain\\",\\"text\\":\\"four, two and two' "free-recall answer returned"
 ok "$out" "committed answer" "commitment revealed on submit"

@@ -529,6 +529,9 @@ static void test_prose(void) {
 		B("is a subspace only if", "  2) ", "     ", "  2) is a\n     subspace\n     only if\n");
 		B("one two\n\nthree", NULL, NULL, "│ one two\n│\n│ three\n");
 		B("", "? ", NULL, "? \n");
+		/* **x** inside a bold block: opens and closes (underlined), the block stays bold after */
+		prose_cap.n = 0; prose_sink("", 0); prose_block("is **sure** to be", "? ", NULL, 1);
+		CHECK(!strchr(prose_cap.p, '*') && strstr(prose_cap.p, "\033[1m\033[4msure\033[0m\033[1m to be") != NULL);
 		prose_begin();
 		prose_text("half", 4);              /* teacher mid-word */
 		prose_block("card", "  ", NULL, 0);

@@ -10,7 +10,7 @@
 #define MAX_WIDTH 88
 #define BAR "\033[0m\033[2m│\033[0m "
 #define BAR_BLANK "\033[0m\033[2m│\033[0m"
-enum { BOLD = 1, ITAL = 2, CODE = 4, HEAD = 8 };
+enum { BOLD = 1, ITAL = 2, CODE = 4, HEAD = 8, STRONG = 16 }; /* BOLD: the block's base; STRONG: markdown ** */
 
 static void to_stdout(const char *s, size_t n) { fwrite(s, 1, n, stdout); fflush(stdout); }
 int prose_width = -1;
@@ -46,7 +46,8 @@ static void put(const char *s) { prose_out(s, strlen(s)); }
 
 static void codes(int st, char *out) {
 	strcpy(out, "\033[0m");
-	if (st & (BOLD | HEAD)) strcat(out, "\033[1m");
+	if (st & (BOLD | HEAD | STRONG)) strcat(out, "\033[1m");
+	if ((st & STRONG) && (st & (BOLD | HEAD))) strcat(out, "\033[4m"); /* ** inside bold text: underline, so it still shows */
 	if (st & ITAL) strcat(out, "\033[3m");
 	if (st & CODE) strcat(out, "\033[36m");
 }
@@ -154,7 +155,7 @@ static void resolve(int nx) {
 	int n = P.stars, sp = !nx || nx == ' ' || nx == '\t' || nx == '\n';
 	P.stars = 0;
 	int can_open = !sp && (!P.wordw || strchr("([{\"'", P.lastc)), can_close = P.wordw > 0;
-	if (n >= 2 && ((P.style & BOLD) ? can_close : can_open)) { set_style(P.style ^ BOLD); n -= 2; }
+	if (n >= 2 && ((P.style & STRONG) ? can_close : can_open)) { set_style(P.style ^ STRONG); n -= 2; }
 	if (n == 1 && ((P.style & ITAL) ? can_close : can_open)) { set_style(P.style ^ ITAL); n = 0; }
 	while (n-- > 0) add_byte('*');
 }
