@@ -13,8 +13,8 @@ count() { grep -o -- "$2" <<<"$1" | wc -l | tr -d ' '; }
 # ── multiple choice (default mechanic) ──
 export DIOTIMA_HOME=$scratch/quiz FAKE_OUT=$scratch/quiz.r
 mkdir -p "$DIOTIMA_HOME"
-# probe: thinking, 2, 90% | predict: -, 1, 60% | check: open, reading note, -, 2, default | /plan
-out=$(printf 'four obviously\n2\n90\n\n1\n60\n\nrows of dots\n\n2\n\n/plan\n' | ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
+# probe: thinking (2 lines, blank ends), 2, 90% | predict: -, 1, 60% | check: open, reading note (blank ends), -, 2, default | /plan
+out=$(printf 'four obviously\nsince 2+2\n\n2\n90\n\n1\n60\n\nrows of dots\n\n\n2\n\n/plan\n' | ./build/dio new "arithmetic" 2>&1) || { echo "$out"; exit 1; }
 echo "$out"
 plain=$(sed $'s/\033\\[[0-9;]*m//g' <<<"$out")
 f=$(ls "$DIOTIMA_HOME"/chats/*.jsonl)
@@ -23,6 +23,7 @@ ok "$out" "✓ correct" "quiz graded"
 ok "$out" "probe concluded" "handoff announced"
 ok "$(cat "$f")" "\"name\":\"quiz\"" "quiz call recorded in transcript"
 ok "$(cat "$FAKE_OUT.tu1")" 'confidence\\":90' "confidence returned to model"
+ok "$(cat "$FAKE_OUT.tu1")" 'thinking\\":\\"four obviously\\\\nsince 2+2' "multi-line quiz thinking returned as one note"
 ok "$(cat "$FAKE_OUT.tu2")" 'quiz rejected: correctAnswer \\"zzz\\" matches no option' "bad quiz bounced to the model"
 ok "$(cat "$FAKE_OUT.tu3")" 'Probe concluded' "probe_done accepted"
 ok "$(cat "$FAKE_OUT.replay.tu3")" "already executed" "replayed tool_use id refused"

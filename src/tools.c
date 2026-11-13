@@ -143,18 +143,38 @@ static int q_ask(const char *label, char *buf, size_t n) {
 	return r;
 }
 
+/* Free-form notes: lines accumulate and a blank line sends them, so a note has
+ * no length cap and a pasted paragraph never spills into the next prompt. A
+ * blank first line skips. *out is malloc'd ("" when skipped). -1 on EOF. */
+static int ask_lines(const char *label, char **out) {
+	size_t cap = 4096, len = 0;
+	char line[4096], *buf = malloc(cap);
+	buf[0] = 0;
+	*out = buf;
+	for (;;) {
+		if (len ? term_ask("        > ", line, sizeof line) : q_ask(label, line, sizeof line)) return -1;
+		if (!line[0]) return 0;
+		size_t l = strlen(line);
+		while (len + l + 2 > cap) *out = buf = realloc(buf, cap *= 2);
+		if (len) buf[len++] = '\n';
+		memcpy(buf + len, line, l + 1);
+		len += l;
+	}
+}
+
 /* Checks arrive collapsed: the learner opens one when done reading, and may
  * say what he thought while reading. Caller holds term_mu. -1 on EOF. */
-static int check_gate(char *reading, size_t n) {
+static int check_gate(char **reading) {
 	char line[256];
+	*reading = NULL;
 	if (q_ask("\n\033[1m▸ Check your understanding\033[0m — press enter when ready ", line, sizeof line)) return -1;
-	return q_ask("thinking while reading (optional, enter to skip)> ", reading, n);
+	return ask_lines("thinking while reading (optional; blank line ends, enter to skip)> ", reading);
 }
 
 /* Asked right after the question is shown, so he can think out loud while
  * working it out rather than recounting afterwards. -1 on EOF. */
-static int ask_thinking(char *buf, size_t n) {
-	return q_ask("thinking as you work it out (optional, enter to skip)> ", buf, n);
+static int ask_thinking(char **out) {
+	return ask_lines("thinking as you work it out (optional; blank line ends, enter to skip)> ", out);
 }
 
 static void show_question(const cJSON *a) {
@@ -172,24 +192,24 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	if (msg[0]) { *is_error = 1; return rejected("quiz", msg); }
 	const cJSON *opts = cJSON_GetObjectItem(a, "options"), *ca = cJSON_GetObjectItem(a, "correctAnswer");
 	int multi = cJSON_IsTrue(cJSON_GetObjectItem(a, "multiSelect")), n = cJSON_GetArraySize(opts);
-	char line[2048], thinking[2048] = "", reading[2048] = "";
+	char line[2048], *thinking = NULL, *reading = NULL;
 	count_open(1);
 	term_lock();
-	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
+	if (teach && is_check(a) && check_gate(&reading)) EOF_OUT(free(reading));
 	show_question(a);
 	for (int i = 0; i < n; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, i), "label")); }
 	printf("  0) I don't know\n");
-	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT();
+	if (ask_thinking(&thinking)) EOF_OUT(free(thinking); free(reading));
 	int picks[64], np;
 	for (;;) {
-		if (q_ask(multi ? "answer (e.g. 1,3)> " : "answer> ", line, sizeof line)) EOF_OUT();
+		if (q_ask(multi ? "answer (e.g. 1,3)> " : "answer> ", line, sizeof line)) EOF_OUT(free(thinking); free(reading));
 		np = parse_choice(line, n < 64 ? n : 63, multi, picks);
 		if (np >= 0) break;
 		printf("  pick %s of 1-%d, or 0\n", multi ? "one or more" : "one", n);
 	}
 	int dont = np == 0, conf = -1;
 	if (!dont) {
-		if (q_ask("confidence that you're right, 0-100 [50]> ", line, sizeof line)) EOF_OUT();
+		if (q_ask("confidence that you're right, 0-100 [50]> ", line, sizeof line)) EOF_OUT(free(thinking); free(reading));
 		conf = line[0] ? atoi(line) : 50;
 		if (conf < 0) conf = 0;
 		if (conf > 100) conf = 100;
@@ -239,8 +259,10 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	cJSON_AddItemToObject(r, "picked", picked);
 	cJSON_AddItemToObject(r, "correctAnswer", cJSON_Duplicate(ca, 1));
 	if (!dont) cJSON_AddNumberToObject(r, "confidence", conf);
-	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
-	if (reading[0]) cJSON_AddStringToObject(r, "thinkingWhileReading", reading);
+	if (thinking && thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
+	if (reading && reading[0]) cJSON_AddStringToObject(r, "thinkingWhileReading", reading);
+	free(thinking);
+	free(reading);
 	char *s = cJSON_PrintUnformatted(r);
 	cJSON_Delete(r);
 	return s;
@@ -254,13 +276,13 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	if (blank(S_(a, "correctAnswer"))) addp(msg, sizeof msg, "correctAnswer is required — commit to the full correct answer BEFORE posing the question");
 	if (teach) teach_problems(a, msg, sizeof msg);
 	if (msg[0]) { *is_error = 1; return rejected("explain", msg); }
-	char answer[4096], thinking[2048] = "", reading[2048] = "";
+	char answer[4096], *thinking = NULL, *reading = NULL;
 	count_open(1);
 	term_lock();
-	if (teach && is_check(a) && check_gate(reading, sizeof reading)) EOF_OUT();
+	if (teach && is_check(a) && check_gate(&reading)) EOF_OUT(free(reading));
 	show_question(a);
-	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT();
-	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT();
+	if (ask_thinking(&thinking)) EOF_OUT(free(thinking); free(reading));
+	if (q_ask("answer in your own words (enter = I don't know)> ", answer, sizeof answer)) EOF_OUT(free(thinking); free(reading));
 	printf("\033[2m  committed answer:\033[0m\n");
 	prose_block(S_(a, "correctAnswer"), NULL, NULL, 0);
 	term_unlock();
@@ -270,8 +292,10 @@ static char *run_explain(const cJSON *a, int *is_error, int teach) {
 	cJSON_AddStringToObject(r, "kind", "explain");
 	if (answer[0]) cJSON_AddStringToObject(r, "text", answer);
 	else cJSON_AddTrueToObject(r, "dontKnow");
-	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
-	if (reading[0]) cJSON_AddStringToObject(r, "thinkingWhileReading", reading);
+	if (thinking && thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
+	if (reading && reading[0]) cJSON_AddStringToObject(r, "thinkingWhileReading", reading);
+	free(thinking);
+	free(reading);
 	char *s = cJSON_PrintUnformatted(r);
 	cJSON_Delete(r);
 	return s;
@@ -300,15 +324,15 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 		free(t);
 	}
 	if (n) printf("  o) Other (type your own)\n");
-	char line[2048], thinking[2048] = "";
+	char line[2048], *thinking = NULL;
 	cJSON *r = cJSON_CreateObject();
 	cJSON_AddStringToObject(r, "kind", "ask");
-	if (ask_thinking(thinking, sizeof thinking)) EOF_OUT(cJSON_Delete(r));
+	if (ask_thinking(&thinking)) EOF_OUT(free(thinking); cJSON_Delete(r));
 	for (;;) {
-		if (q_ask(n ? (multi ? "answer (e.g. 1,3 or o)> " : "answer> ") : "answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
+		if (q_ask(n ? (multi ? "answer (e.g. 1,3 or o)> " : "answer> ") : "answer> ", line, sizeof line)) EOF_OUT(free(thinking); cJSON_Delete(r));
 		if (!n) { cJSON_AddStringToObject(r, "answer", line); break; }
 		if (!strcmp(line, "o") || !strcmp(line, "O")) {
-			if (q_ask("your answer> ", line, sizeof line)) EOF_OUT(cJSON_Delete(r));
+			if (q_ask("your answer> ", line, sizeof line)) EOF_OUT(free(thinking); cJSON_Delete(r));
 			cJSON_AddStringToObject(r, "other", line);
 			break;
 		}
@@ -322,7 +346,8 @@ static char *tool_ask(const cJSON *a, int *is_error) {
 	}
 	term_unlock();
 	count_open(-1);
-	if (thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
+	if (thinking && thinking[0]) cJSON_AddStringToObject(r, "thinking", thinking);
+	free(thinking);
 	char *s = cJSON_PrintUnformatted(r);
 	cJSON_Delete(r);
 	return s;

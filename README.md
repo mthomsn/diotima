@@ -64,6 +64,10 @@ verdict and explanation show immediately. With free recall (see `config.json` be
 type your answer; afterwards you see the answer the model committed to before asking, and
 the teacher grades yours against it.
 
+The optional thinking prompts (while reading, and while working a question out) take as many
+lines as you like: a blank line ends the note, and enter on an empty prompt skips it. Each
+line can be at most about 1000 characters (the terminal's own limit).
+
 Talk to it at `you>` like any conversation.
 
 **Math.** The model writes LaTeX, and dio shows it typeset. Inline `$…$` becomes Unicode
