@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
+#include <unistd.h>
 #include "store.h"
 #include "phase.h"
 #include "plan.h"
@@ -183,6 +185,17 @@ static void show_question(const cJSON *a) {
 	if (S_(a, "details")) prose_block(S_(a, "details"), "  ", NULL, 0);
 }
 
+/* The model tends to write the correct option first; show options in random
+ * order (grading goes by value, never position). DIOTIMA_NO_SHUFFLE keeps the
+ * model's order, for tests. */
+static void shuffle(int *order, int n) {
+	static int seeded;
+	if (!seeded) { srandom((unsigned)time(NULL) ^ (unsigned)getpid()); seeded = 1; }
+	for (int i = 0; i < n; i++) order[i] = i;
+	if (getenv("DIOTIMA_NO_SHUFFLE")) return;
+	for (int i = n - 1; i > 0; i--) { int j = (int)(random() % (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t; }
+}
+
 #define EOF_OUT(...) do { __VA_ARGS__; term_unlock(); count_open(-1); return eof_result(is_error); } while (0)
 
 static char *run_quiz(const cJSON *a, int *is_error, int teach) {
@@ -197,7 +210,9 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	term_lock();
 	if (teach && is_check(a) && check_gate(&reading)) EOF_OUT(free(reading));
 	show_question(a);
-	for (int i = 0; i < n; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, i), "label")); }
+	int order[64];
+	shuffle(order, n < 64 ? n : 64);
+	for (int i = 0; i < n && i < 64; i++) { char k[12]; snprintf(k, sizeof k, "%d", i + 1); put_option(k, S_(cJSON_GetArrayItem(opts, order[i]), "label")); }
 	printf("  0) I don't know\n");
 	if (ask_thinking(&thinking)) EOF_OUT(free(thinking); free(reading));
 	int picks[64], np;
@@ -216,7 +231,7 @@ static char *run_quiz(const cJSON *a, int *is_error, int teach) {
 	}
 
 	cJSON *picked = cJSON_CreateArray();
-	for (int i = 0; i < np; i++) cJSON_AddItemToArray(picked, cJSON_CreateString(optval(cJSON_GetArrayItem(opts, picks[i] - 1))));
+	for (int i = 0; i < np; i++) cJSON_AddItemToArray(picked, cJSON_CreateString(optval(cJSON_GetArrayItem(opts, order[picks[i] - 1]))));
 	int correct = 0;
 	if (!dont) {
 		int want = cJSON_IsArray(ca) ? cJSON_GetArraySize(ca) : 1;
@@ -633,6 +648,7 @@ static char *tool_conclude(const cJSON *a, int *is_error) {
 #define QUIZ_DESC \
 	"Ask the learner ONE graded multiple-choice question and wait for the answer. Ask, then end your turn. " \
 	"Options are bare claims (reasoning goes in `explanation`, shown after he answers; write it BEFORE correctAnswer). " \
+	"Options are shown in a random order, so never refer to one by position (no 'both of the above', 'option 2'). " \
 	"`correctAnswer` is the option `value` (default: label), an array only with multiSelect. Never add an 'I don't know' option — it is added for you. " \
 	"Returns verdict, picked, confidence (his stated % that he is right) and optional thinking."
 #define EXPLAIN_DESC \

@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 make -s build/dio
-export PATH="$PWD/tests/bin:$PATH"
+export PATH="$PWD/tests/bin:$PATH" DIOTIMA_NO_SHUFFLE=1
 scratch=$(mktemp -d)
 trap '[ -n "${KEEP:-}" ] || rm -rf "$scratch"' EXIT
 fail=0; [ -n "${KEEP:-}" ] && echo "scratch: $scratch"
