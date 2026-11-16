@@ -109,6 +109,19 @@ number always means the list position, so a tail made only of digits needs more 
 Wherever a command takes an id, the same shorthands work. The phase, the plan and your
 position are all worked out from the transcript.
 
+**Use several computers.** Make the data directory a git checkout of a private repo and dio
+keeps it in step: it pulls when any command starts and commits and pushes when a session
+or `dio extract` ends. Offline, it warns and carries on; what didn't go up goes up next time.
+Set it up once:
+
+    cd ~/.diotima && git init && printf 'tmp/\n' > .gitignore
+    git add -A && git commit -m "diotima data"
+    gh repo create diotima-data --private --source . --push
+
+and on every other computer: `git clone <that repo> ~/.diotima`. Don't run a session on
+two computers at once: a clash stops the pull and dio says so, and you sort it out with
+git in `~/.diotima`.
+
 **See what you know.** `dio graph` prints every proposition you've been taught, grouped by
 the session it was first learned in. Each session gets its own colored ●:
 
@@ -180,6 +193,7 @@ The mechanic applies to every session, for both probing and teaching.
 | `DIOTIMA_CHROME` | the Chrome binary used to test demos |
 | `DIOTIMA_PROMPTS` | a prompts directory to use instead of the built-in one |
 | `DIOTIMA_NO_OPEN` | set it to stop dio opening demos in the browser |
+| `DIOTIMA_NO_SYNC` | set it to stop dio pulling and pushing a git data directory |
 | `NO_COLOR` | plain `dio graph` output with no color codes |
 
 ## What it keeps

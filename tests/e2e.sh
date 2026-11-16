@@ -151,4 +151,20 @@ unset FAKE_MODE DIOTIMA_NO_OPEN
 export DIOTIMA_HOME=$scratch/explain
 echo '{"mechanic":"essay"}' >"$DIOTIMA_HOME/config.json"
 ok "$(./build/dio new x </dev/null 2>&1 || true)" 'mechanic.*must be' "invalid mechanic refused"
+
+# ── sync: a data root that is a git checkout follows its remote ──
+g() { git -c user.name=t -c user.email=t@t "$@"; }
+git init -q --bare "$scratch/remote.git"
+g clone -q "$scratch/remote.git" "$scratch/a" 2>/dev/null
+printf 'tmp/\n' >"$scratch/a/.gitignore" && mkdir "$scratch/a/chats"
+cp "$scratch"/quiz/chats/*.jsonl "$scratch/a/chats/"
+(cd "$scratch/a" && g add -A && g commit -qm init && g push -q origin HEAD 2>/dev/null)
+g clone -q "$scratch/remote.git" "$scratch/b" 2>/dev/null
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t FAKE_OUT=$scratch/sync.r
+printf '/quit\n' | DIOTIMA_HOME=$scratch/a ./build/dio resume >/dev/null 2>&1 || true
+ok "$(git -C "$scratch/remote.git" log --format=%s)" "dio resume" "session pushed when it ends"
+ok "$(git -C "$scratch/a" status --porcelain)" "^$" "nothing left unsaved, tmp/ ignored"
+ok "$(DIOTIMA_HOME=$scratch/b ./build/dio ls 2>&1; diff -r "$scratch/a/chats" "$scratch/b/chats" && echo same)" "same" "other machine pulls it on start"
+git -C "$scratch/b" remote set-url origin "$scratch/nowhere"
+ok "$(DIOTIMA_HOME=$scratch/b ./build/dio ls 2>&1)" "could not pull" "offline pull warns and carries on"
 exit $fail

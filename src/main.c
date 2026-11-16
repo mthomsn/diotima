@@ -19,6 +19,7 @@
 #include "plan.h"
 #include "session.h"
 #include "store.h"
+#include "sync.h"
 #include "term.h"
 #include "tools.h"
 
@@ -302,6 +303,7 @@ int main(int argc, char **argv) {
 	static session_t sess;
 	const char *cmd = argc > 1 ? argv[1] : "help";
 	math_display = img_show_tex;
+	if (strcmp(cmd, "help")) sync_pull();
 	if (!strcmp(cmd, "ls")) return cmd_ls();
 	if (!strcmp(cmd, "graph")) {
 		graph_t g = graph_load();
@@ -320,6 +322,7 @@ int main(int argc, char **argv) {
 		signal(SIGINT, on_sigint);
 		signal(SIGPIPE, SIG_IGN);
 		int rc = extract_now();
+		sync_push("extract");
 		return rc;
 	}
 	if (!strcmp(cmd, "plan")) {
@@ -363,5 +366,6 @@ int main(int argc, char **argv) {
 	converse();
 	jobs_abort_all();
 	if (!phase_is_practice(S->messages)) extract_finish(); /* practice writes nothing to the graph */
+	sync_push(cmd);
 	return 0;
 }
